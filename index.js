@@ -1,87 +1,93 @@
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
+const express = require("express");
+const cors = require("cors");
+require("dotenv").config();
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+
 const app = express();
 const port = process.env.PORT || 5000;
 
+// 🛠 Improved CORS Configuration
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://mahin-task-nest.surge.sh",
+      "https://task-manager-web-client.vercel.app",
+    ],
+    credentials: true, // Allow credentials (cookies, authorization headers)
+  })
+);
 
-// middleware
-app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://mahin-task-nest.surge.sh/',
-    'https://task-manager-web-client.vercel.app/',
-  ],
-  credentials: true
-}));
 app.use(express.json());
 
-
-
-
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+// ✅ Ensure MongoDB Connection
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.6qskn.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
     deprecationErrors: true,
-  }
+  },
 });
 
 async function run() {
   try {
+    // ✅ Connect to MongoDB before handling requests
+    await client.connect();
+    console.log("✅ Connected to MongoDB!");
 
-    const usersCollection = client.db('taskNestDB').collection('users')
-    const taskCollection = client.db('taskNestDB').collection('tasks')
+    const usersCollection = client.db("taskNestDB").collection("users");
+    const taskCollection = client.db("taskNestDB").collection("tasks");
 
-
-    app.post('/users', async (req, res) => {
+    // 📝 Register User API
+    app.post("/users", async (req, res) => {
       const { email, name } = req.body;
 
       if (!email || !name) {
-        return res.status(400).send('Email and name are required');
+        return res.status(400).json({ error: "Email and name are required" });
       }
 
       try {
-        const usersCollection = client.db('taskNestDB').collection('users');
         const existingUser = await usersCollection.findOne({ email });
 
         if (existingUser) {
-          return res.status(400).send('User already exists');
+          return res.status(400).json({ error: "User already exists" });
         }
 
         const newUser = { email, name };
         await usersCollection.insertOne(newUser);
-        res.status(201).send('User registered successfully');
+        res.status(201).json({ message: "User registered successfully" });
       } catch (error) {
-        console.error('Error registering user:', error);
-        res.status(500).send('Internal server error');
+        console.error("Error registering user:", error);
+        res.status(500).json({ error: "Internal server error" });
       }
     });
 
-
-    // Add Task Route
+    // Add a New Task
     app.post("/tasks", async (req, res) => {
-      const newTask = req.body;
-      const result = await taskCollection.insertOne(newTask);
-      res.send(result);
-  });
-  
+      try {
+        const newTask = req.body;
+        const result = await taskCollection.insertOne(newTask);
+        res.status(201).json(result);
+      } catch (error) {
+        console.error("Error adding task:", error);
+        res.status(500).json({ error: "Failed to add task" });
+      }
+    });
 
+    // Get All Tasks
     app.get("/tasks", async (req, res) => {
       try {
         const tasks = await taskCollection.find().toArray();
-        res.json(tasks); // Send all tasks as a response
+        res.json(tasks);
       } catch (error) {
-        console.error('Error fetching tasks:', error);
-        res.status(500).send('Error fetching tasks');
+        console.error("Error fetching tasks:", error);
+        res.status(500).json({ error: "Error fetching tasks" });
       }
     });
 
-    // Update a task
+    // Update a Task
     app.put("/tasks/:id", async (req, res) => {
       try {
         const { id } = req.params;
@@ -90,47 +96,49 @@ async function run() {
           { _id: new ObjectId(id) },
           { $set: updateData }
         );
-        res.send(result);
+
+        if (result.modifiedCount === 0) {
+          return res.status(404).json({ error: "Task not found" });
+        }
+
+        res.json({ message: "Task updated successfully", result });
       } catch (error) {
-        console.error('Error updating task:', error);
-        res.status(500).send('Error updating task');
+        console.error("Error updating task:", error);
+        res.status(500).json({ error: "Error updating task" });
       }
     });
 
-    // Delete a task
+    //  Delete a Task
     app.delete("/tasks/:id", async (req, res) => {
       try {
         const { id } = req.params;
         const result = await taskCollection.deleteOne({ _id: new ObjectId(id) });
-        res.send(result);
+
+        if (result.deletedCount === 0) {
+          return res.status(404).json({ error: "Task not found" });
+        }
+
+        res.json({ message: "Task deleted successfully", result });
       } catch (error) {
-        console.error('Error deleting task:', error);
-        res.status(500).send('Error deleting task');
+        console.error("Error deleting task:", error);
+        res.status(500).json({ error: "Error deleting task" });
       }
     });
 
+    // Root Route
+    app.get("/", async (req, res) => {
+      res.send("✅ TaskNest API is running...");
+    });
 
-
-
-
-
-
-
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // // Ensures that the client will close when you finish/error
-    // await client.close();
+    // Start Server AFTER successful DB connection
+    app.listen(port, () => {
+      console.log(`TaskNest Server is running on Port: ${port}`);
+    });
+  } catch (error) {
+    console.error("MongoDB Connection Failed:", error);
+    process.exit(1); // Stop the server if DB connection fails
   }
 }
+
+// 🔄 Start the Server
 run().catch(console.dir);
-
-
-
-app.get('/', async (req, res) => {
-  res.send('TaskNest CURD is running')
-})
-
-
-app.listen(port, () => {
-  console.log(`TaskNest Server is running on Port: ${port}`)
-})
