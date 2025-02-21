@@ -10,6 +10,7 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'https://mahin-task-nest.surge.sh/',
+    'https://task-manager-web-client.vercel.app/',
   ],
   credentials: true
 }));
