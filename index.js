@@ -20,7 +20,7 @@ app.use(
 
 app.use(express.json());
 
-// ✅ Ensure MongoDB Connection
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.6qskn.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 const client = new MongoClient(uri, {
@@ -87,26 +87,40 @@ async function run() {
       }
     });
 
-    // Update a Task
     app.put("/tasks/:id", async (req, res) => {
       try {
         const { id } = req.params;
         const updateData = req.body;
+    
+        // Validate ObjectId
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({ error: "Invalid task ID" });
+        }
+    
+        // Ensure updateData is not empty
+        if (Object.keys(updateData).length === 0) {
+          return res.status(400).json({ error: "No update data provided" });
+        }
+    
         const result = await taskCollection.updateOne(
           { _id: new ObjectId(id) },
           { $set: updateData }
         );
-
-        if (result.modifiedCount === 0) {
+    
+        if (result.matchedCount === 0) {
           return res.status(404).json({ error: "Task not found" });
         }
-
-        res.json({ message: "Task updated successfully", result });
+    
+        res.json({
+          message: "Task updated successfully",
+          modifiedCount: result.modifiedCount,
+        });
       } catch (error) {
         console.error("Error updating task:", error);
         res.status(500).json({ error: "Error updating task" });
       }
     });
+    
 
     //  Delete a Task
     app.delete("/tasks/:id", async (req, res) => {
